@@ -4,7 +4,7 @@ namespace JohnKary\PHPUnit\Listener;
 
 /**
  * A PHPUnit TestListener that exposes your slowest running tests by outputting
- * results directly to the console.
+ * results directly to the console or output file.
  */
 class SpeedTrapListener implements \PHPUnit_Framework_TestListener
 {
@@ -17,6 +17,27 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
      * @var integer
      */
     protected $suites = 0;
+
+    /**
+     * Output path
+     *
+     * @var string
+     */
+    protected $outPath;
+
+    /**
+     * Output descriptor
+     *
+     * @var resource
+     */
+    protected $out;
+
+    /**
+     * If True, flush output after every write.
+     *
+     * @var boolean
+     */
+    protected $forceFlush;
 
     /**
      * Time in milliseconds at which a test will be considered "slow" and be
@@ -48,6 +69,16 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
     public function __construct(array $options = array())
     {
         $this->loadOptions($options);
+
+        $this->out = fopen($this->outPath, 'wt');
+    }
+
+    /**
+     * Destruct the instance
+     */
+    public function __destruct()
+    {
+        fclose($this->out);
     }
 
     /**
@@ -266,7 +297,7 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
      */
     protected function renderHeader()
     {
-        echo sprintf("\n\nYou should really fix these slow tests (>%sms)...\n", $this->slowThreshold);
+        $this->write(sprintf("\n\nYou should really fix these slow tests (>%sms)...\n", $this->slowThreshold));
     }
 
     /**
@@ -281,7 +312,7 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
             $label = key($slowTests);
             $time = array_shift($slowTests);
 
-            echo sprintf(" %s. %sms to run %s\n", $i, $time, $label);
+            $this->write(sprintf(" %s. %sms to run %s\n", $i, $time, $label));
         }
     }
 
@@ -291,7 +322,8 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
     protected function renderFooter()
     {
         if ($hidden = $this->getHiddenCount()) {
-            echo sprintf("...and there %s %s more above your threshold hidden from view", $hidden == 1 ? 'is' : 'are', $hidden);
+            $this->write(sprintf("...and there %s %s more above your threshold hidden from view",
+                                 $hidden == 1 ? 'is' : 'are', $hidden));
         }
     }
 
@@ -302,6 +334,8 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
      */
     protected function loadOptions(array $options)
     {
+        $this->outPath = isset($options['outPath']) ? $options['outPath'] : 'php://stdout';
+        $this->forceFlush = isset($options['forceFlush']) ? $options['forceFlush'] : false;
         $this->slowThreshold = isset($options['slowThreshold']) ? $options['slowThreshold'] : 500;
         $this->reportLength = isset($options['reportLength']) ? $options['reportLength'] : 10;
     }
@@ -327,5 +361,18 @@ class SpeedTrapListener implements \PHPUnit_Framework_TestListener
         $ann = $test->getAnnotations();
 
         return isset($ann['method']['slowThreshold'][0]) ? $ann['method']['slowThreshold'][0] : $this->slowThreshold;
+    }
+
+    /**
+     * Write text to output
+     *
+     * @param string $buffer
+     */
+    protected function write($buffer)
+    {
+        fwrite($this->out, $buffer);
+
+        if ($this->forceFlush)
+            fflush($this->out);
     }
 }
